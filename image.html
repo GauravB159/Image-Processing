@@ -9,6 +9,9 @@
         .container{
             float: right;
             width:600px;
+            position: absolute;
+            right:0; 
+            top:0;
         }
         input[type="text"]{
             width:40px;
@@ -25,10 +28,25 @@
         .thresh{
             margin-bottom: 10px;
         }
+        #compression{
+            width:500px;
+            font-size: 10px;
+            word-wrap: break-word;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        #result{
+            width:500px;
+            word-wrap: break-word;
+            font-size: 20px;
+            font-weight: bold;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
     </style>
 </head>
 <body>
     <canvas id="canvas" width="800" height="500"></canvas>
+    <div id="result"></div>
+    <div id="compression"></div>
     <div class="container">
         <div class="thresh">
             <input id="threshold" type="range" default=100 min=0 max=255 onchange="updateTextInput(this.value);">
@@ -67,10 +85,12 @@
         <input id="robert" value="Robert's Cross Edge Detection" type="button">
         <input id="sobel" value="Sobel Operator Edge Detection" type="button">
         <input id="prewitt" value="Prewitt Edge Detection" type="button">
+        <input id="rle" value="Run Length Encoding" type="button">
+        <input id="rleuncomp" value="Run Length Decoding" type="button">
     </div>
     <script>
     var img = new Image();
-    img.src = 'http://localhost:8000/image.jpg';
+    img.src = 'http://localhost:8000/image4.jpeg';
     img.onload = function() {
         draw(this);
     };
@@ -826,6 +846,50 @@
             }
             ctx.putImageData(imageData, 0, 0);
         }
+        var rle = function(){
+            let dat = [];
+            for(let i = 0; i < data.length; i+=4){
+                dat.push(data[i]);
+            }
+            let datComp = [];
+            let run = dat[0];
+            let count = 1;
+            for(let i = 1; i < dat.length; i++){
+                if(dat[i] !== run){
+                    datComp.push(run);
+                    datComp.push(count);
+                    count = 1;
+                    run = dat[i];
+                }else{
+                    count+=1;
+                }
+            }
+            datComp.push(run);
+            datComp.push(count);
+            let comped = datComp.join(),
+                uncomped = dat.join();
+            console.log(datComp.length,dat.length);
+            document.getElementById("result").innerHTML = `Uncompressed String Length: ${uncomped.length}<br/>Compressed String Length: ${comped.length}<br/>Compression Ratio: ${uncomped.length / comped.length}`
+            document.getElementById("compression").innerHTML = comped;
+        }
+        var rledecode = function(){
+            let comped = document.getElementById('compression').innerHTML;
+            let arr = comped.split(',');
+            let dat = [];
+            let sum = 0;
+            for(let i = 0; i < arr.length;i+=2){
+                let run = arr[i],
+                    count = parseInt(arr[i+1]);
+                    sum+= count;
+                for(let j = 0; j < count; j++){
+                    dat.push(run);
+                }
+            }
+            let uncomped = dat.join();
+            console.log(arr.length,dat.length, sum);
+            document.getElementById("result").innerHTML = `Compressed String Length: ${comped.length}<br/>Uncompressed String Length: ${uncomped.length}<br/>Compression Ratio: ${uncomped.length / comped.length}`
+            document.getElementById("compression").innerHTML = uncomped;
+        }
         var invertbtn = document.getElementById('invertbtn');
         invertbtn.addEventListener('click', invert);
         var thresholdbtn = document.getElementById('thresholdapply');
@@ -864,6 +928,10 @@
         robertEdge.addEventListener('click',() => { roberts() })
         var prewittEdge = document.getElementById('prewitt');
         prewittEdge.addEventListener('click',() => { prewitt() })
+        var rlecomp = document.getElementById('rle');
+        rlecomp.addEventListener('click',() => { rle() })
+        var rleuncomp = document.getElementById('rleuncomp');
+        rleuncomp.addEventListener('click',() => { rledecode() })
     }
 
     </script>
