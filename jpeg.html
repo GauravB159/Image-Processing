@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+    <style>
+        .container{
+            float: right;
+            width:300px;
+            position: fixed;
+            right:0; 
+            top:0;
+        }
+        input[type="text"]{
+            width:35px;
+            font-size: 20px;
+            font-weight: bold;
+            font-family: sans-serif;
+        }
+        button{
+            margin:5px;
+            font-size: 20px;
+            font-weight: bold;
+            font-family: sans-serif;
+        }
+
+        .hidden{
+            display: none;
+        }
+        .text{
+            font-size: 30px;
+            font-weight: bold;
+            font-family: 'Trebuchet MS', 'Lucida Sans Unicode', 'Lucida Grande', 'Lucida Sans', Arial, sans-serif;
+            position: absolute;
+            width:220px;
+            right:0;
+        }
+        .contain{
+            position: relative;
+        }
+    </style>
+</head>
+<body>
+    <div class="visible contain" id="one">
+        <canvas id="canvas"></canvas>
+        <div class="text">Original Image</div>
+    </div><br/>
+    <div class="hidden contain" id="two">
+        <canvas id="canvas2"></canvas>
+        <div class="text">Luminance</div>
+    </div><br/>
+    <div class="hidden contain" id="three">
+        <canvas id="canvas3"></canvas>
+        <div class="text">DCT of Luminance</div>
+    </div><br/>
+    <div class="hidden contain" id="four">
+        <canvas id="canvas4"></canvas>
+        <div class="text">Quanitized DCT</div>
+    </div><br/>
+    <div class="hidden contain" id="five">
+        <canvas id="canvas5"></canvas>
+        <div class="text">Inverse of Quantized DCT</div>
+    </div>
+
+    <div class="container">
+        <button id="y">Luminance</button><br/>
+        <button disabled id="dcty">DCT for Luminance</button><br/>
+        <input disabled type="range" id="quality" default=50 min=1 max=100 onchange="updateTextInput(this.value);"><input type="text" id="textInput" readonly value="50">
+        <button disabled id="quantize">Quantize DCT Values</button><br/>
+        <button disabled id="idct">IDCT of Quantized Values</button>
+    </div>
+    <script>
+    var img = new Image();
+    img.src = 'http://localhost:8000/image9.jpeg';
+    img.onload = function() {
+        draw(this);
+    };
+    function updateTextInput(val) {
+        document.getElementById('textInput').value=val;
+    }
+    function draw(img) {
+        var canvas = document.getElementById('canvas');
+        canvas.height = img.height+(8-img.height%8);
+        canvas.width = img.width+(8-img.width%8);
+        Array.from(document.getElementsByClassName('contain')).forEach((node)=>{
+            node.style.height = img.height+(8-img.height%8)+"px";
+            node.style.width = 300+img.width+(8-img.width%8)+"px";
+        });
+        Array.from(document.getElementsByClassName('text')).forEach((node)=>{
+            node.style.top = (img.height+(8-img.height%8))/2+"px";
+        });
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        img.style.display = 'none';
+        let dftResult;
+        var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        let height = img.height,
+            width = img.width;
+        var data = imageData.data;
+        let dat = [],
+            dat2 = [];
+
+        var y = function(){   
+            document.getElementById('dcty').disabled=false;
+            var canvas = document.getElementById('canvas2');
+            canvas.height = img.height+(8-img.height%8);
+            canvas.width = img.width+(8-img.width%8);
+            document.getElementById("two").style.display = 'block';
+            var ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            let data = imageData.data;
+            for(let i = 0; i < data.length; i+=4){
+                let yVal = 0.299*data[i]+0.587*data[i+1]+0.114*data[i+2];
+                data[i]= yVal;
+                data[i+1]= yVal;
+                data[i+2]= yVal;
+                if(i === 0){
+                    console.log(yVal);
+                }
+            }
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        function cval(val){
+            if(val === 0){
+                return (1 / Math.sqrt(2));
+            }else{
+                return 1;
+            }
+        }
+        function quantMatrixGen(Q,N){
+            Tb = [
+                    [16, 11, 10, 16, 24, 40, 51, 61],
+                    [12, 12, 14, 19, 26, 58, 60, 55],
+                    [14, 13, 16, 24, 40, 57, 69, 56],
+                    [14, 17, 22, 29, 51, 87, 80, 62],
+                    [18, 22, 37, 56, 68,109,103, 77],
+                    [24, 35, 55, 64, 81,104,113, 92],
+                    [49, 64, 78, 87,103,121,120,101],
+                    [72, 92, 95, 98,112,100,103, 99]
+                 ]
+            if(Q > 100){
+                Q = 100;
+            }
+            let S;
+            if(Q < 50){
+                S = 5000 / Q;
+            }else{
+                S = 200-2*Q
+            }
+            let QMatrix = [];
+            for(let i = 0; i < N; i++){
+                QMatrix.push([]);
+                for(let j = 0; j < N; j++){
+                    console.log(S, Tb[i][j],(S*Tb[i][j]+50));
+                    let temp = Math.floor((S*Tb[i][j]+50)/100)
+                    if(temp === 0){
+                        temp = 1;
+                    }
+                    QMatrix[i].push(temp)
+                }
+            }
+            return QMatrix;
+        }
+        var dct = function(input, id) {
+            document.getElementById('quantize').disabled=false;
+            document.getElementById('quality').disabled=false;
+
+            var canvas = document.getElementById(id);
+            canvas.height = img.height+(8-img.height%8);
+            canvas.width = img.width+(8-img.width%8);
+            document.getElementById("three").style.display = 'block';
+            var ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            let height = imageData.height,
+                width = imageData.width;
+            let data = imageData.data;
+            let N = 8;
+            let count = -1,
+                count2 = 0;
+            for(let i = 0; i < data.length;){
+                if(count2 % width === 0){
+                    dat.push([]);
+                    dat2.push([]);
+                    count+=1;
+                }
+                dat[count].push(input[i])
+                dat2[count].push(input[i])
+                i+=4;
+                count2+=1;
+            }
+            for(let i = 0; i < height; i+=N){
+                for(let j = 0; j < width; j+=N){
+                    for(let k = 0; k < N;k++){
+                        for(let l = 0; l < N; l++){
+                            let sum = 0;
+                            for(let m = 0; m < N;m++){
+                                for(let n = 0; n < N; n++){
+                                    let temp = (dat[i+m][j+n]-128)*Math.cos(((2*m+1)*k*Math.PI)/(2*N))*Math.cos(((2*n+1)*l*Math.PI)/(2*N));
+                                    sum += temp;
+                                }
+                            }
+                            let dctval = (1/Math.sqrt(2*N)) * cval(k) * cval(l) * sum;
+                            dctval = Math.round(dctval);
+                            dat2[i+k][j+l] = dctval;
+                        }
+                    }
+                }
+            }
+            for(let i = 0; i < dat2.length; i++){
+                for(let j = 0; j < dat2[i].length;j++){
+                    data[4*(i*width+j)] = dat2[i][j];
+                    data[4*(i*width+j)+1] = dat2[i][j];
+                    data[4*(i*width+j)+2] = dat2[i][j];
+                }
+            }
+            ctx.putImageData(imageData, 0, 0);
+        };
+        
+        var dcty = function(){
+            var canvas = document.getElementById('canvas2');
+            var ctx = canvas.getContext('2d');
+            var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            dct(imageData.data,'canvas3');
+        }
+        var quantize = function(){
+            document.getElementById('idct').disabled=false;
+            var canvas = document.getElementById('canvas4');
+            canvas.height = img.height+(8-img.height%8);
+            canvas.width = img.width+(8-img.width%8);
+            document.getElementById("four").style.display = 'block';
+            var ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            let height = imageData.height,
+                width = imageData.width;
+            let data = imageData.data;
+            let N = 8;
+            let quality = parseInt(document.getElementById('quality').value)
+            let qmatrix = quantMatrixGen(quality, N);
+            console.log(qmatrix);
+            for(let i = 0; i < height; i+=N){
+                for(let j = 0; j < width; j+=N){
+                    for(let k = 0; k < N;k++){
+                        for(let l = 0; l < N; l++){
+                            dat2[i+k][j+l] =  qmatrix[k][l]*Math.round(dat2[i+k][j+l] / qmatrix[k][l]);
+                        }
+                    }
+                }
+            }
+            for(let i = 0; i < dat2.length; i++){
+                for(let j = 0; j < dat2[i].length;j++){
+                    data[4*(i*width+j)] = dat2[i][j];
+                    data[4*(i*width+j)+1] = dat2[i][j];
+                    data[4*(i*width+j)+2] = dat2[i][j];
+                }
+            }
+            ctx.putImageData(imageData, 0, 0);
+
+        }
+        var idct = function() {
+            var canvas = document.getElementById('canvas5');
+            canvas.height = img.height+(8-img.height%8);
+            canvas.width = img.width+(8-img.width%8);
+            document.getElementById("five").style.display = 'block';
+            var ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            let height = imageData.height,
+                width = imageData.width;
+            let data = imageData.data;
+            let N = 8;
+            for(let i = 0; i < height; i+=N){
+                for(let j = 0; j < width; j+=N){
+                    for(let k = 0; k < N;k++){
+                        for(let l = 0; l < N; l++){
+                            let sum = 0;
+                            for(let m = 0; m < N;m++){
+                                for(let n = 0; n < N; n++){
+                                    let temp = cval(m)*cval(n)*(dat2[i+m][j+n])*Math.cos(((2*k+1)*m*Math.PI)/(2*N))*Math.cos(((2*l+1)*n*Math.PI)/(2*N));
+                                    sum += temp;
+                                }
+                            }
+
+                            let dctval = (2 / Math.sqrt(N*N))*sum;
+                            // console.log(dat[i+k][j+l],dctval,i,j,k,l,'.,,,,,,,,');
+
+                            dctval = Math.round(dctval+128);
+                            dat[i+k][j+l] = dctval;
+                        }
+                    }
+                }
+            }
+            for(let i = 0; i < dat.length; i++){
+                for(let j = 0; j < dat[i].length;j++){
+                    data[4*(i*width+j)] = dat[i][j];
+                    data[4*(i*width+j)+1] = dat[i][j];
+                    data[4*(i*width+j)+2] = dat[i][j];
+                }
+            }
+            ctx.putImageData(imageData, 0, 0);
+        };
+ 
+        var ybtn = document.getElementById('y');
+            ybtn.addEventListener('click', y);
+        var dctybtn = document.getElementById('dcty');
+            dctybtn.addEventListener('click', dcty);
+        var quantybtn = document.getElementById('quantize');
+            quantybtn.addEventListener('click', quantize);
+        var idctbtn = document.getElementById('idct');
+            idctbtn.addEventListener('click', idct);
+    }
+    
+    </script>
+</body>
+</html>
